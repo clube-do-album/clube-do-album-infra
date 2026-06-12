@@ -1,4 +1,7 @@
 services:
+  # ---------------------------------------------------------------------------
+  # Infraestrutura
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16
     container_name: clube-do-album-postgres
@@ -7,9 +10,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-clube}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clube}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clube} -d ${POSTGRES_DB:-clube_do_album}"]
       interval: 10s
@@ -36,6 +40,193 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - clube-do-album-network
+
+  # ---------------------------------------------------------------------------
+  # APIs Java (Spring) - tabelas criadas via Hibernate ddl-auto=update
+  # ---------------------------------------------------------------------------
+  identity-api:
+    build: ../clube-do-album-identity-api
+    container_name: clube-do-album-identity-api
+    environment:
+      SERVER_PORT: 8081
+      DATABASE_URL: jdbc:postgresql://postgres:5432/clube_do_album_identity
+      DATABASE_USERNAME: ${POSTGRES_USER:-clube}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-clube}
+      JWT_SECRET: ${JWT_SECRET:-clube-do-album-local-development-secret-key-change-me}
+      JWT_EXPIRATION_SECONDS: 3600
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  ratings-api:
+    build: ../clube-do-album-ratings-api
+    container_name: clube-do-album-ratings-api
+    environment:
+      SERVER_PORT: 8082
+      DATABASE_URL: jdbc:postgresql://postgres:5432/clube_do_album_ratings
+      DATABASE_USERNAME: ${POSTGRES_USER:-clube}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-clube}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-clube}
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-clube}
+      RABBITMQ_EXCHANGE: clube-do-album.events
+      ALBUM_RATED_ROUTING_KEY: album.rated
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  # ---------------------------------------------------------------------------
+  # Servicos Node (Prisma) - precisam de migrate (ver nota no README)
+  # ---------------------------------------------------------------------------
+  catalog-api:
+    build: ../clube-do-album-catalog-api
+    container_name: clube-do-album-catalog-api
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/clube_do_album_catalog
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: clube-do-album.events
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  ranking-worker:
+    build: ../clube-do-album-ranking-worker
+    container_name: clube-do-album-ranking-worker
+    environment:
+      SERVER_PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/clube_do_album_ranking
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: clube-do-album.events
+      ALBUM_IMPORTED_QUEUE: ranking.album-imported.queue
+      ALBUM_IMPORTED_ROUTING_KEY: album.imported
+      ALBUM_RATED_QUEUE: ranking.album-rated.queue
+      ALBUM_RATED_ROUTING_KEY: album.rated
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  feed-worker:
+    build: ../clube-do-album-feed-worker
+    container_name: clube-do-album-feed-worker
+    environment:
+      SERVER_PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/clube_do_album_feed
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      CATALOG_API_URL: http://catalog-api:3001
+      IDENTITY_API_URL: http://identity-api:8081
+      RABBITMQ_EXCHANGE: clube-do-album.events
+      ALBUM_RATED_QUEUE: feed.album-rated.queue
+      ALBUM_RATED_ROUTING_KEY: album.rated
+      USER_FOLLOWED_QUEUE: feed.user-followed.queue
+      USER_FOLLOWED_ROUTING_KEY: user.followed
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  social-api:
+    build: ../clube-do-album-social-api
+    container_name: clube-do-album-social-api
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/clube_do_album_social
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: clube-do-album.events
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  notification-worker:
+    build: ../clube-do-album-notification-worker
+    container_name: clube-do-album-notification-worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/${POSTGRES_DB:-clube_do_album}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      USER_FOLLOWED_QUEUE: user.followed.queue
+      RANKING_UPDATED_QUEUE: ranking.updated.queue
+      TRENDING_ALBUM_QUEUE: trending.album.queue
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - clube-do-album-network
+
+  # ---------------------------------------------------------------------------
+  # Gateway + Web
+  # ---------------------------------------------------------------------------
+  gateway-api:
+    build: ../clube-do-album-gateway-api
+    container_name: clube-do-album-gateway-api
+    environment:
+      SERVER_PORT: 3000
+      IDENTITY_API_URL: http://identity-api:8081
+      CATALOG_API_URL: http://catalog-api:3001
+      RATINGS_API_URL: http://ratings-api:8082
+      RANKING_API_URL: http://ranking-worker:3002
+      FEED_API_URL: http://feed-worker:3003
+      SOCIAL_API_URL: http://social-api:3004
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      JWT_SECRET: ${JWT_SECRET:-clube-do-album-local-development-secret-key-change-me}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - identity-api
+      - catalog-api
+      - ratings-api
+      - ranking-worker
+      - feed-worker
+      - social-api
+    networks:
+      - clube-do-album-network
+
+  web:
+    build: ../clube-do-album-web
+    container_name: clube-do-album-web
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway-api
     networks:
       - clube-do-album-network
 
