@@ -1,0 +1,54 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: Run Prisma migrations before starting the stack
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy over SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.CLOUD_HOST }}
+          username: ${{ secrets.CLOUD_USER }}
+          key: ${{ secrets.CLOUD_SSH_KEY }}
+          port: ${{ secrets.CLOUD_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+
+            cd "${{ secrets.CLOUD_DEPLOY_PATH }}"
+
+            test -f docker-compose.prod.yml
+            test -f .env.prod
+
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+            docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+
+            if [ "${{ inputs.run_migrations }}" = "true" ]; then
+              docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm catalog-api npx prisma migrate deploy
+              docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm ranking-worker npx prisma migrate deploy
+              docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm feed-worker npx prisma migrate deploy
+              docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm social-api npx prisma migrate deploy
+              docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm notification-worker npx prisma migrate deploy
+            fi
+
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+            docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+            docker image prune -f

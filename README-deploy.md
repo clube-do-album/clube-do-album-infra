@@ -145,3 +145,52 @@ E acessar:
 ```text
 https://app.exemplo.com
 ```
+
+## Deploy pelo GitHub Actions
+
+O repositorio de infra possui um workflow manual:
+
+```text
+.github/workflows/deploy-production.yml
+```
+
+Ele deve ser executado pelo GitHub em:
+
+```text
+Actions > Deploy Production > Run workflow
+```
+
+Antes de rodar, configurar os secrets no repositorio ou na organization:
+
+```text
+CLOUD_HOST=ip-ou-dominio-do-servidor
+CLOUD_USER=usuario-ssh
+CLOUD_SSH_PORT=22
+CLOUD_SSH_KEY=chave-privada-ssh
+CLOUD_DEPLOY_PATH=/caminho/do/clube-do-album-infra
+GHCR_USERNAME=usuario-github
+GHCR_TOKEN=token-com-read-packages
+```
+
+No servidor, o caminho definido em `CLOUD_DEPLOY_PATH` precisa conter:
+
+```text
+docker-compose.prod.yml
+.env.prod
+```
+
+O workflow faz:
+
+```bash
+docker login ghcr.io
+docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm catalog-api npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm ranking-worker npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm feed-worker npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm social-api npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm notification-worker npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker image prune -f
+```
+
+As migrations podem ser desativadas no input `run_migrations` ao rodar o workflow manualmente.
