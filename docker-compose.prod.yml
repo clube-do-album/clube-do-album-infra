@@ -1,0 +1,171 @@
+services:
+  identity-api:
+    image: ghcr.io/clube-do-album/clube-do-album-identity-api:latest
+    container_name: clube-do-album-identity-api
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      DATABASE_URL: ${IDENTITY_DATABASE_URL}
+      DATABASE_USERNAME: ${POSTGRES_USERNAME}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS:-3600}
+    ports:
+      - "${IDENTITY_API_PORT:-8081}:8081"
+    networks:
+      - clube-do-album-network
+
+  catalog-api:
+    image: ghcr.io/clube-do-album/clube-do-album-catalog-api:latest
+    container_name: clube-do-album-catalog-api
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      DATABASE_URL: ${CATALOG_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+    ports:
+      - "${CATALOG_API_PORT:-3001}:3001"
+    networks:
+      - clube-do-album-network
+
+  ratings-api:
+    image: ghcr.io/clube-do-album/clube-do-album-ratings-api:latest
+    container_name: clube-do-album-ratings-api
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8082
+      DATABASE_URL: ${RATINGS_DATABASE_URL}
+      DATABASE_USERNAME: ${POSTGRES_USERNAME}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+      ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
+    ports:
+      - "${RATINGS_API_PORT:-8082}:8082"
+    networks:
+      - clube-do-album-network
+
+  ranking-worker:
+    image: ghcr.io/clube-do-album/clube-do-album-ranking-worker:latest
+    container_name: clube-do-album-ranking-worker
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 3002
+      DATABASE_URL: ${RANKING_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+      RABBITMQ_DEAD_LETTER_EXCHANGE: ${RABBITMQ_DEAD_LETTER_EXCHANGE:-clube-do-album.dead-letter}
+      ALBUM_IMPORTED_QUEUE: ${RANKING_ALBUM_IMPORTED_QUEUE:-ranking.album-imported.queue}
+      ALBUM_IMPORTED_ROUTING_KEY: ${ALBUM_IMPORTED_ROUTING_KEY:-album.imported}
+      ALBUM_RATED_QUEUE: ${RANKING_ALBUM_RATED_QUEUE:-ranking.album-rated.queue}
+      ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
+    ports:
+      - "${RANKING_WORKER_PORT:-3002}:3002"
+    networks:
+      - clube-do-album-network
+
+  feed-worker:
+    image: ghcr.io/clube-do-album/clube-do-album-feed-worker:latest
+    container_name: clube-do-album-feed-worker
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 3003
+      DATABASE_URL: ${FEED_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      CATALOG_API_URL: http://catalog-api:3001
+      IDENTITY_API_URL: http://identity-api:8081
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+      RABBITMQ_DEAD_LETTER_EXCHANGE: ${RABBITMQ_DEAD_LETTER_EXCHANGE:-clube-do-album.dead-letter}
+      ALBUM_RATED_QUEUE: ${FEED_ALBUM_RATED_QUEUE:-feed.album-rated.queue}
+      ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
+      USER_FOLLOWED_QUEUE: ${FEED_USER_FOLLOWED_QUEUE:-feed.user-followed.queue}
+      USER_FOLLOWED_ROUTING_KEY: ${USER_FOLLOWED_ROUTING_KEY:-user.followed}
+    ports:
+      - "${FEED_WORKER_PORT:-3003}:3003"
+    networks:
+      - clube-do-album-network
+
+  social-api:
+    image: ghcr.io/clube-do-album/clube-do-album-social-api:latest
+    container_name: clube-do-album-social-api
+    restart: unless-stopped
+    environment:
+      PORT: 3004
+      DATABASE_URL: ${SOCIAL_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+    ports:
+      - "${SOCIAL_API_PORT:-3004}:3004"
+    networks:
+      - clube-do-album-network
+
+  notification-worker:
+    image: ghcr.io/clube-do-album/clube-do-album-notification-worker:latest
+    container_name: clube-do-album-notification-worker
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 3005
+      DATABASE_URL: ${NOTIFICATION_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
+      RABBITMQ_DEAD_LETTER_EXCHANGE: ${RABBITMQ_DEAD_LETTER_EXCHANGE:-clube-do-album.dead-letter}
+      IDENTITY_API_URL: http://identity-api:8081
+      CATALOG_API_URL: http://catalog-api:3001
+      ALBUM_RATED_QUEUE: ${NOTIFICATION_ALBUM_RATED_QUEUE:-notification.album-rated.queue}
+      ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
+      USER_FOLLOWED_QUEUE: ${NOTIFICATION_USER_FOLLOWED_QUEUE:-notification.user-followed.queue}
+      USER_FOLLOWED_ROUTING_KEY: ${USER_FOLLOWED_ROUTING_KEY:-user.followed}
+      RANKING_UPDATED_QUEUE: ${NOTIFICATION_RANKING_UPDATED_QUEUE:-notification.ranking-updated.queue}
+      RANKING_UPDATED_ROUTING_KEY: ${RANKING_UPDATED_ROUTING_KEY:-ranking.updated}
+    ports:
+      - "${NOTIFICATION_WORKER_PORT:-3005}:3005"
+    networks:
+      - clube-do-album-network
+
+  gateway-api:
+    image: ghcr.io/clube-do-album/clube-do-album-gateway-api:latest
+    container_name: clube-do-album-gateway-api
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 3000
+      IDENTITY_API_URL: http://identity-api:8081
+      CATALOG_API_URL: http://catalog-api:3001
+      RATINGS_API_URL: http://ratings-api:8082
+      RANKING_API_URL: http://ranking-worker:3002
+      FEED_API_URL: http://feed-worker:3003
+      SOCIAL_API_URL: http://social-api:3004
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${GATEWAY_API_PORT:-3000}:3000"
+    depends_on:
+      - identity-api
+      - catalog-api
+      - ratings-api
+      - ranking-worker
+      - feed-worker
+      - social-api
+      - notification-worker
+    networks:
+      - clube-do-album-network
+
+  web:
+    image: ghcr.io/clube-do-album/clube-do-album-web:latest
+    container_name: clube-do-album-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - gateway-api
+    networks:
+      - clube-do-album-network
+
+networks:
+  clube-do-album-network:
+    name: clube-do-album-network

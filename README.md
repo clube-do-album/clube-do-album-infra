@@ -56,6 +56,26 @@ Para parar e remover os volumes locais:
 docker compose down -v
 ```
 
+## Deploy em producao
+
+Os arquivos de producao ficam separados do ambiente local:
+
+- `docker-compose.prod.yml`
+- `.env.prod.example`
+- `README-deploy.md`
+
+O compose de producao usa imagens publicadas no GHCR:
+
+```text
+ghcr.io/clube-do-album
+```
+
+Ele assume PostgreSQL e RabbitMQ ja provisionados na nuvem. Para instrucoes completas, veja:
+
+```text
+README-deploy.md
+```
+
 ## RabbitMQ Management
 
 Disponivel em:
