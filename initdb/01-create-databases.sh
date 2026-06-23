@@ -11,6 +11,7 @@ DATABASES=(
   clube_do_album_ranking
   clube_do_album_feed
   clube_do_album_social
+  clube_do_album_notification
 )
 
 for db in "${DATABASES[@]}"; do

@@ -1,4 +1,45 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: clube-do-album-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clube_do_album}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DB:-clube_do_album}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clube-do-album-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: clube-do-album-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clube-do-album-network
+
   identity-api:
     image: ghcr.io/clube-do-album/clube-do-album-identity-api:latest
     container_name: clube-do-album-identity-api
@@ -11,7 +52,10 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS:-3600}
     ports:
-      - "${IDENTITY_API_PORT:-8081}:8081"
+      - "127.0.0.1:${IDENTITY_API_PORT:-8081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - clube-do-album-network
 
@@ -27,7 +71,12 @@ services:
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
     ports:
-      - "${CATALOG_API_PORT:-3001}:3001"
+      - "127.0.0.1:${CATALOG_API_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - clube-do-album-network
 
@@ -47,7 +96,12 @@ services:
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
       ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
     ports:
-      - "${RATINGS_API_PORT:-8082}:8082"
+      - "127.0.0.1:${RATINGS_API_PORT:-8082}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - clube-do-album-network
 
@@ -66,7 +120,12 @@ services:
       ALBUM_RATED_QUEUE: ${RANKING_ALBUM_RATED_QUEUE:-ranking.album-rated.queue}
       ALBUM_RATED_ROUTING_KEY: ${ALBUM_RATED_ROUTING_KEY:-album.rated}
     ports:
-      - "${RANKING_WORKER_PORT:-3002}:3002"
+      - "127.0.0.1:${RANKING_WORKER_PORT:-3002}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - clube-do-album-network
 
@@ -87,7 +146,16 @@ services:
       USER_FOLLOWED_QUEUE: ${FEED_USER_FOLLOWED_QUEUE:-feed.user-followed.queue}
       USER_FOLLOWED_ROUTING_KEY: ${USER_FOLLOWED_ROUTING_KEY:-user.followed}
     ports:
-      - "${FEED_WORKER_PORT:-3003}:3003"
+      - "127.0.0.1:${FEED_WORKER_PORT:-3003}:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      catalog-api:
+        condition: service_started
+      identity-api:
+        condition: service_started
     networks:
       - clube-do-album-network
 
@@ -101,7 +169,12 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL}
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-clube-do-album.events}
     ports:
-      - "${SOCIAL_API_PORT:-3004}:3004"
+      - "127.0.0.1:${SOCIAL_API_PORT:-3004}:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - clube-do-album-network
 
@@ -124,7 +197,16 @@ services:
       RANKING_UPDATED_QUEUE: ${NOTIFICATION_RANKING_UPDATED_QUEUE:-notification.ranking-updated.queue}
       RANKING_UPDATED_ROUTING_KEY: ${RANKING_UPDATED_ROUTING_KEY:-ranking.updated}
     ports:
-      - "${NOTIFICATION_WORKER_PORT:-3005}:3005"
+      - "127.0.0.1:${NOTIFICATION_WORKER_PORT:-3005}:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      catalog-api:
+        condition: service_started
+      identity-api:
+        condition: service_started
     networks:
       - clube-do-album-network
 
@@ -169,3 +251,7 @@ services:
 networks:
   clube-do-album-network:
     name: clube-do-album-network
+
+volumes:
+  postgres_data:
+  rabbitmq_data:

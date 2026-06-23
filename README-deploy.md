@@ -10,15 +10,14 @@ ghcr.io/clube-do-album
 
 - Servidor com Docker e Docker Compose.
 - Acesso ao GHCR, caso as imagens estejam privadas.
-- PostgreSQL provisionado na nuvem.
-- RabbitMQ provisionado na nuvem.
+- Um Droplet/servidor Linux. O `docker-compose.prod.yml` sobe PostgreSQL e RabbitMQ no proprio servidor.
 - URLs publicas para:
   - Web: `https://app.exemplo.com`
   - Gateway/API: `https://api.exemplo.com`
 
 ## Bancos necessarios
 
-Criar os bancos abaixo no PostgreSQL:
+O PostgreSQL sobe pelo compose e o script `initdb/01-create-databases.sh` cria os bancos abaixo na primeira inicializacao do volume:
 
 ```sql
 CREATE DATABASE clube_do_album_identity;
@@ -38,9 +37,9 @@ Copiar o exemplo:
 cp .env.prod.example .env.prod
 ```
 
-Preencher `.env.prod` com os dados reais da nuvem:
+Preencher `.env.prod` com os dados reais do servidor:
 
-- host, usuario e senha do PostgreSQL
+- usuario e senha do PostgreSQL
 - URLs de banco de cada servico
 - RabbitMQ URL e credenciais
 - `JWT_SECRET`
@@ -108,13 +107,12 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod down
 
 ## Ordem esperada
 
-O PostgreSQL e o RabbitMQ devem estar disponiveis antes de subir a stack.
-
 O Compose sobe:
 
-1. APIs internas e workers
-2. Gateway
-3. Web
+1. PostgreSQL e RabbitMQ
+2. APIs internas e workers
+3. Gateway
+4. Web
 
 ## Migrations e schemas
 
