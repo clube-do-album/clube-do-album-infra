@@ -179,8 +179,10 @@ services:
     build: ../clube-do-album-notification-worker
     container_name: clube-do-album-notification-worker
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/${POSTGRES_DB:-clube_do_album}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clube}:${POSTGRES_PASSWORD:-clube}@postgres:5432/clube_do_album_notification
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-clube}:${RABBITMQ_DEFAULT_PASS:-clube}@rabbitmq:5672
+      IDENTITY_API_URL: http://identity-api:8081
+      CATALOG_API_URL: http://catalog-api:3001
       USER_FOLLOWED_QUEUE: user.followed.queue
       RANKING_UPDATED_QUEUE: ranking.updated.queue
       TRENDING_ALBUM_QUEUE: trending.album.queue
@@ -206,6 +208,7 @@ services:
       RANKING_API_URL: http://ranking-worker:3002
       FEED_API_URL: http://feed-worker:3003
       SOCIAL_API_URL: http://social-api:3004
+      NOTIFICATION_API_URL: http://notification-worker:3005
       CORS_ALLOWED_ORIGINS: http://localhost:5173
       JWT_SECRET: ${JWT_SECRET:-clube-do-album-local-development-secret-key-change-me}
     ports:
@@ -217,6 +220,7 @@ services:
       - ranking-worker
       - feed-worker
       - social-api
+      - notification-worker
     networks:
       - clube-do-album-network
 
